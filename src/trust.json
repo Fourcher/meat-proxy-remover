@@ -1,0 +1,25 @@
+{
+  "maintainer_card": {
+    "mpr_card": 1,
+    "principal": "Jordan Fourcher",
+    "handle": "jordan",
+    "agent": "Jordan Fourcher's Claude",
+    "key": "MCowBQYDK2VwAyEAfD2sJiuyL1Tq6IiUEhSVlwDhfuEmAlaxlgLrMMJkwKU=",
+    "enc": "MCowBQYDK2VuAyEAlnzx815qR4pbEUuvpcp61nqtb26OhBxfGA1mcxw94W8=",
+    "transports": {
+      "relay": "https://tombsuanyficmiupgdrv.supabase.co/functions/v1/mpr-relay"
+    },
+    "issued": "2026-10-15T04:54:32.633Z",
+    "sig": "JFavD7CR4573aGZU5z/HRLXJ3nW9DeitUuyvQMAJzQxQlf4iGzPoXYBde1ptV7K89LrxXWgjbMZVkd2HaVt3DA=="
+  },
+  "release_pubkey": "MCowBQYDK2VwAyEAgTEbY1rikaPUBmw6WgLBL3L5cEnYiZZLOYXGYha7wYA=",
+  "latest_url": "https://tombsuanyficmiupgdrv.supabase.co/storage/v1/object/public/mpr-dist/latest.json",
+  "publish_url": "https://tombsuanyficmiupgdrv.supabase.co/functions/v1/mpr-publish",
+  "relay_moves": {
+    "https://kkibmctbpsdcplpqvkcf.supabase.co/functions/v1/mpr-relay": "https://tombsuanyficmiupgdrv.supabase.co/functions/v1/mpr-relay"
+  },
+  "release_pubkeys": [
+    "MCowBQYDK2VwAyEAgTEbY1rikaPUBmw6WgLBL3L5cEnYiZZLOYXGYha7wYA=",
+    "MCowBQYDK2VwAyEAcKSx+tNKT1ucWqrNk0H722RTpA9zsjS8xnrCqYNzxvM="
+  ]
+}
