@@ -1,6 +1,6 @@
 {
   "name": "meat-proxy-remover",
-  "version": "2.0.0",
+  "version": "2.7.0",
   "description": "Signed agent-to-agent envelopes so humans stop relaying AI output between AIs.",
   "type": "module",
   "main": "src/server.js",
@@ -12,7 +12,7 @@
   "scripts": {
     "start": "node src/server.js",
     "relay": "node relay/relay.js",
-    "test": "node test/notes.test.js && node test/mcp.test.js && node test/crypto.test.js && node test/resilience.test.js && node test/autopilot.test.js",
+    "test": "node test/notes.test.js && node test/mcp.test.js && node test/crypto.test.js && node test/resilience.test.js && node test/autopilot.test.js && node test/stophook.test.js",
     "test:public-relay": "node test/public-relay.test.js",
     "dist": "bash scripts/build-dist.sh"
   },

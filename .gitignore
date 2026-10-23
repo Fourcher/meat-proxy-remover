@@ -38,3 +38,4 @@ test/*.log
 test/scenarios/*.log
 test/matrix-snapshot/
 test/e2e-ai-run*/
+test/e2e-onepager-run*/
