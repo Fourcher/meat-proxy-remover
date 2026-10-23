@@ -6,7 +6,8 @@
 //   POST /v1/register              (signed)  claim a handle → public key (first come, first pinned)
 //   POST /v1/inbox/:handle          anyone   deposit a signed envelope (signature checked here too)
 //   GET  /v1/inbox/:handle          (signed)  read pending messages
-//   POST /v1/ack/:handle/:id        (signed)  delete a delivered message
+//   POST /v1/ack/:handle/:id        (signed)  delete a delivered message (and record a read receipt)
+//   GET  /v1/receipts?ids=&handle=   anyone   when those deposits were read; when handle last checked its mail
 //   GET  /healthz
 //
 // It also works mounted under a path prefix (e.g. behind a proxy at /mpr/...): everything before the
@@ -38,7 +39,7 @@ const boxDir = (h) => path.join(DATA, "boxes", norm(h));
 const seenNonces = new Map();
 
 function protocolPath(pathname) {
-  const m = pathname.match(/\/v1\/(register|inbox|ack)(\/|$)/);
+  const m = pathname.match(/\/v1\/(register|inbox|ack|receipts)(\/|$)/);
   return m ? pathname.slice(m.index) : pathname;
 }
 
@@ -71,12 +72,23 @@ function authed(req, pathname, key) {
   return ok;
 }
 
+// Read receipts and last check-in, so a waiting AI can tell "read and quiet" from "not running".
+const receiptsFile = path.join(DATA, "receipts.json"), pollsFile = path.join(DATA, "polls.json");
+const readJ = (f) => { try { return JSON.parse(fs.readFileSync(f, "utf8")); } catch { return {}; } };
+
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, "http://relay");
     if (url.pathname.endsWith("/healthz")) return send(res, 200, { ok: true });
     const pathname = protocolPath(url.pathname);
     const parts = pathname.split("/").filter(Boolean).map(decodeURIComponent);
+
+    if (req.method === "GET" && pathname === "/v1/receipts") {
+      const rc = readJ(receiptsFile), polls = readJ(pollsFile);
+      const ids = String(url.searchParams.get("ids") || "").split(",").filter(Boolean).slice(0, 200);
+      const h = norm(url.searchParams.get("handle"));
+      return send(res, 200, { read: Object.fromEntries(ids.filter((i) => rc[i]).map((i) => [i, rc[i]])), last_check: h ? polls[h] || null : null });
+    }
 
     if (req.method === "POST" && pathname === "/v1/register") {
       const body = JSON.parse(await readBody(req));
@@ -113,6 +125,7 @@ const server = http.createServer(async (req, res) => {
 
       if (req.method === "GET") {
         if (!authed(req, pathname, key)) return send(res, 401, { error: "bad signature" });
+        const polls = readJ(pollsFile); polls[handle] = new Date().toISOString(); fs.writeFileSync(pollsFile, JSON.stringify(polls));
         const dir = boxDir(handle);
         const list = () => (fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => f.endsWith(".json")).sort().slice(0, 100) : []);
         // Long-poll: ?wait=N (≤25 s) holds the request until mail arrives.
@@ -129,7 +142,11 @@ const server = http.createServer(async (req, res) => {
       const key = registry()[handle];
       if (!key || !authed(req, pathname, key)) return send(res, 401, { error: "bad signature" });
       const file = path.join(boxDir(handle), path.basename(parts[3]) + ".json");
-      if (fs.existsSync(file)) fs.unlinkSync(file);
+      if (fs.existsSync(file)) {
+        fs.unlinkSync(file);
+        const rc = readJ(receiptsFile); rc[String(parts[3]).split("_").slice(1).join("_") || parts[3]] = new Date().toISOString();
+        fs.writeFileSync(receiptsFile, JSON.stringify(rc));
+      }
       return send(res, 200, { ok: true });
     }
 
