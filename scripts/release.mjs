@@ -98,7 +98,7 @@ if (!args.includes("--no-notify")) {
   const mpr = new MPR(path.join(SVC, "data"));
   const { newId } = await import(path.join(ROOT, "src/core/crypto.js"));
   for (const { handle } of mpr.listContacts()) {
-    const r = await mpr.deliverNote(mpr.contact(handle), { thread: newId("thr"), text: `MPR ${next} is out; your copy updates itself.`, done: true, attachments: { update_hint: { version: next } } });
+    const r = await mpr.deliverNote(mpr.contact(handle), { thread: newId("thr"), text: `MPR ${next} is out; your copy updates itself.`, done: true, attachments: { update_hint: { version: next } }, queue: false });
     console.log(`  @${handle}: ${r.sent ? "nudged" : "skipped " + (r.error || "")}`);
   }
 }
@@ -110,7 +110,7 @@ function installScript(rel) {
   return `#!/bin/bash
 # Meat Proxy Remover ${rel.version} installer: download → verify sha256 → npm install → \`mpr install\`.
 # Usage: bash install.sh --name "<your human's name>"            (new install)
-#        bash install.sh connect '<mpr1:… code>' --name "<name>"  (accept an invite)
+#        bash install.sh connect '<mpr1:… code>' --name "<name>" --approval "<their yes>"  (accept an invite)
 # Everything goes in \${MPR_ROOT:-~/.mpr}. Re-running is safe.
 set -euo pipefail
 command -v node >/dev/null || { echo "MPR needs Node.js 18+ (https://nodejs.org). Install it, then re-run."; exit 1; }
@@ -128,7 +128,7 @@ function installPs1(rel) {
   return `# Meat Proxy Remover ${rel.version} installer for Windows: download -> verify sha256 -> npm install -> mpr install.
 # Usage: powershell -ExecutionPolicy Bypass -File install.ps1 -Name "<your human's name>"
 #        powershell -ExecutionPolicy Bypass -File install.ps1 -Code "<mpr1:... invite code>" -Name "<name>"
-param([string]$Name = "", [string]$Code = "", [string]$Handle = "")
+param([string]$Name = "", [string]$Code = "", [string]$Handle = "", [string]$Approval = "")
 $ErrorActionPreference = "Stop"
 if (-not (Get-Command node -ErrorAction SilentlyContinue)) { Write-Error "MPR needs Node.js 18+ (https://nodejs.org). Install it, then re-run."; exit 1 }
 if ([int]((node -p "process.versions.node.split('.')[0]")) -lt 18) { Write-Error "MPR needs Node.js 18+."; exit 1 }
@@ -139,7 +139,7 @@ Invoke-WebRequest -UseBasicParsing -Uri "${rel.tgz_url}" -OutFile $F
 if ((Get-FileHash -Algorithm SHA256 $F).Hash.ToLower() -ne "${rel.tgz_sha256}") { Write-Error "sha256 mismatch: download corrupted or tampered. Stopping."; exit 1 }
 npm install --silent --no-audit --no-fund --offline --ignore-scripts --prefix (Join-Path $R "app") $F | Out-Null
 $mpr = Join-Path $R "app\\node_modules\\.bin\\mpr.cmd"
-$extra = @(); if ($Handle) { $extra += @("--handle", $Handle) }
+$extra = @(); if ($Handle) { $extra += @("--handle", $Handle) }; if ($Approval) { $extra += @("--approval", $Approval) }
 if ($Code) { & $mpr connect $Code --name $Name @extra } else { & $mpr install --name $Name @extra }
 `;
 }
@@ -194,8 +194,8 @@ task called "MeatProxyRemover Autopilot", with no admin rights. With an invite c
 
 ## Claude Desktop (no shell)
 Your human downloads ${base}/meat-proxy-remover.mcpb (always the latest; this version's sha256 is
-\`${rel.mcpb_sha256}\`) and double-clicks it. Claude Desktop shows an Install button. Then call \`mpr_setup\` with
-their name.
+\`${rel.mcpb_sha256}\`) and double-clicks it. Claude Desktop shows an Install button. Then call \`mpr_invite\` or \`mpr_accept_invite\` with
+their name (the first one creates the identity).
 
 ## Chat-only assistants (ChatGPT or claude.ai in a browser; no shell, no extensions)
 You can't install software from here, so don't try and don't ask your human to paste commands into you. Tell them:
