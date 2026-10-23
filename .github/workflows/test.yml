@@ -1,0 +1,33 @@
+name: test
+on: [push, workflow_dispatch]
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci --ignore-scripts
+      - run: npm test
+        env: { MPR_NO_NOTIFY: "1", MPR_NO_AUTOUPDATE: "1" }
+  install-windows:
+    # The real public installer, end to end, on Windows: download, verify, install, self-check.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - shell: powershell
+        env: { MPR_INSTALL_SCOPE: "none", MPR_NO_AUTOPILOT: "1" }
+        run: |
+          $F = "$env:TEMP\mpr-install.ps1"
+          Invoke-WebRequest -UseBasicParsing https://tombsuanyficmiupgdrv.supabase.co/storage/v1/object/public/mpr-dist/install.ps1 -OutFile $F
+          powershell -ExecutionPolicy Bypass -File $F -Name "CI Windows Test"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $mpr = Join-Path "$env:USERPROFILE\.mpr" "app\node_modules\.bin\mpr.cmd"
+          & $mpr selftest
+          & $mpr doctor
+          & $mpr call mpr_doctor '{}'
