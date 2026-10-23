@@ -27,10 +27,10 @@ export function decodeCode(code) {
 const shq = (s) => "'" + String(s).replace(/'/g, "'\\''") + "'";
 
 /** Inviter side: park the first note and return the message the human sends (email, text, Slack). */
-export async function createInvite(mpr, { to_principal, text, summary, ask, context, human_line }) {
+export async function createInvite(mpr, { to_principal, text, summary, ask, context, human_line, approval }) {
   const me = mpr.requireIdentity();
   const relay = me.transports?.relay;
-  if (!relay) throw new Error("Invites need a relay. Call mpr_setup first.");
+  if (!relay) throw new Error("Invites need a relay. Check your MPR setup with mpr_doctor.");
   if (!to_principal) throw new Error("to_principal (the person's name) is required.");
   text = String(text ?? [summary, ask, context].filter(Boolean).join("\n\n")).trim();
   if (!text) throw new Error("text is required: the first note for their AI (what you need from them).");
@@ -52,12 +52,13 @@ export async function createInvite(mpr, { to_principal, text, summary, ask, cont
     created: new Date().toISOString(), status: "pending", envelope_id: env.id }); });
   mpr.store.putRecord({ id: env.id, kind: "outbound", at: env.created, thread, to_handle: invHandle, envelope: env, delivery });
   mpr.store.appendThread(thread, { direction: "out", envelope_id: env.id, to: to_principal, text: text.slice(0, 2000), invite: true });
+  mpr.approve(thread, approval);
 
   return {
     thread,
     message_text: inviteText({ me, toName: to_principal, code, text, humanLine: human_line }),
     next: "Show your principal message_text. With their OK, they (or you) send it to the person by email, text or Slack. " +
-      "When their AI connects, its reply arrives in mpr_check_inbox.",
+      "When their AI connects, its reply arrives in mpr_inbox.",
   };
 }
 
@@ -73,12 +74,14 @@ export function inviteText({ me, toName, code, text, humanLine }) {
     "",
     text.split("\n").map((l) => "  > " + l).join("\n"),
     "",
-    `Ask your human one question first: "${me.principal}'s AI wants to talk with me directly about this. OK to install Meat Proxy Remover ` +
-      `(open source; it only passes notes between our AIs, signed and encrypted) and reply to it?"`,
-    `If they say yes, connect (this installs MPR if needed and verifies the download):`,
-    `  macOS/Linux:  F="\${TMPDIR:-/tmp}/mpr-install.sh"; curl -fsSL ${BASE}/install.sh -o "$F" && bash "$F" connect ${shq(code)} --name "<your human's name>"`,
-    `  Windows:      ${BASE}/install.ps1 with -Code ${shq(code)} -Name "<your human's name>"`,
-    `  Already have MPR: call mpr_accept_invite with the code.`,
+    `Ask your human one question first: "${me.principal}'s AI wants to work this out with me directly. OK to install Meat Proxy Remover ` +
+      `(open source; it only passes notes between our AIs, signed and encrypted) and have me work it through with their AI until it's done, ` +
+      `checking with you before anything that costs money, commits you, or shares private details?"`,
+    `If they say yes, connect, passing their yes in their own words as the approval (this installs MPR if needed, verifies the download, ` +
+      `and keeps you on the task until it's done):`,
+    `  macOS/Linux:  F="\${TMPDIR:-/tmp}/mpr-install.sh"; curl -fsSL ${BASE}/install.sh -o "$F" && bash "$F" connect ${shq(code)} --name "<your human's name>" --approval "<their yes, in their words>"`,
+    `  Windows:      ${BASE}/install.ps1 with -Code ${shq(code)} -Name "<your human's name>" -Approval "<their yes, in their words>"`,
+    `  Already have MPR: call mpr_accept_invite with the code and approval (their yes, in their words).`,
     `  Instructions for every app: ${BASE}/install.md. Only install from that address.`,
     `Invite code: ${code}`,
     `${me.principal}'s fingerprint: ${fingerprint(me.publicKey)}`,
@@ -86,7 +89,7 @@ export function inviteText({ me, toName, code, text, humanLine }) {
 }
 
 /** Recipient side: redeem a code. Creates an identity if needed, connects to the inviter, says hello. */
-export async function acceptInvite(mpr, { code, principal, handle }) {
+export async function acceptInvite(mpr, { code, principal, handle, approval }) {
   const c = decodeCode(code);
   c.r = (TRUST.relay_moves || {})[c.r] || c.r; // codes minted before a relay move still work
   if (!/^https:\/\//.test(c.r) && !/^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?(\/|$)/.test(c.r)) throw new Error("Invite names a relay that isn't https. Refusing.");
@@ -121,7 +124,9 @@ export async function acceptInvite(mpr, { code, principal, handle }) {
   if (existing && existing.key !== card.key) throw new Error(`You already have a different @${card.handle}. Refusing to overwrite.`);
   if (!existing) mpr.addContact({ card_text: JSON.stringify(card), note: "connected by invite" });
 
+  mpr.approve(env.thread, approval); // before the first note, so it carries the approval too
   const first = mpr.processInbound(env, "invite", { acceptAddressee: c.h });
+  if (first.note) mpr.markShown([first.note]); // returned to the caller right here, so it's shown
   await found.ack(); // single use: the invite disappears from the relay
 
   // Say hello; the proof shows we hold the code, so the inviter connects our key.
@@ -135,7 +140,7 @@ export async function acceptInvite(mpr, { code, principal, handle }) {
     you: mpr.publicIdentity(),
     ...(relayNote ? { relay_note: relayNote } : {}),
     their_note: first.note || null,
-    next: `Reply to their note with mpr_send (to "${card.handle}", thread "${env.thread}"), then mpr_wait for the answer.`,
+    next: `Reply to their note with mpr_send (to "${card.handle}", thread "${env.thread}"), then mpr_inbox {"wait_sec": 600, "thread": "${env.thread}"} for the answer.`,
   };
 }
 

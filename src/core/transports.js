@@ -8,7 +8,7 @@ import crypto from "node:crypto";
 import { signString } from "./crypto.js";
 import { normHandle } from "./store.js";
 
-export async function deliver(env, contact) {
+export async function deliver(env, contact, { quick = false } = {}) {
   const results = [];
   const t = contact?.transports || {};
   if (t.folder) {
@@ -28,7 +28,7 @@ export async function deliver(env, contact) {
   if (t.relay) {
     // Transient failures (network, 5xx, rate limit) get two quick retries; anything left is queued by the caller.
     let last;
-    for (const delay of [0, 600, 2000]) {
+    for (const delay of quick ? [0] : [0, 600, 2000]) {
       if (delay) await new Promise((r) => setTimeout(r, delay));
       try {
         const res = await fetch(relayUrl(t.relay, `/v1/inbox/${encodeURIComponent(normHandle(contact.handle))}`), {
@@ -39,7 +39,8 @@ export async function deliver(env, contact) {
         });
         const body = await res.text();
         last = { via: "relay", ok: res.ok, status: res.status, detail: body.slice(0, 200), retryable: res.status >= 500 || res.status === 429 || res.status === 404 };
-        if (res.ok || !last.retryable) break;
+        // A missing mailbox won't appear in the next two seconds: queue it rather than retrying right away.
+        if (res.ok || !last.retryable || res.status === 404) break;
       } catch (e) {
         last = { via: "relay", ok: false, error: e.message, retryable: true };
       }
@@ -75,12 +76,20 @@ export async function registerWithRelay(identity) {
   const url = identity.transports?.relay;
   if (!url) return null;
   const pathname = "/v1/register";
-  const res = await fetch(relayUrl(url, pathname), {
-    method: "POST",
-    headers: { "content-type": "application/json", ...relayAuthHeaders(identity, "POST", pathname) },
-    body: JSON.stringify({ handle: identity.handle, key: identity.publicKey }),
-  });
-  return { ok: res.ok, status: res.status, detail: (await res.text()).slice(0, 200) };
+  // The relay allows a few registrations a minute per network address (invites count too). When busy, wait and retry
+  // for up to about a minute rather than failing.
+  let out;
+  for (const delay of [0, 8000, 15000, 20000, 20000]) {
+    if (delay) await new Promise((r) => setTimeout(r, delay));
+    const res = await fetch(relayUrl(url, pathname), {
+      method: "POST",
+      headers: { "content-type": "application/json", ...relayAuthHeaders(identity, "POST", pathname) },
+      body: JSON.stringify({ handle: identity.handle, key: identity.publicKey }),
+    });
+    out = { ok: res.ok, status: res.status, detail: (await res.text()).slice(0, 200) };
+    if (res.status !== 429) break;
+  }
+  return out;
 }
 
 /** Pull raw envelopes waiting for us. Returns [{ via, raw, ack() }]. */
@@ -136,4 +145,13 @@ export async function collect(identity, { wait = 0 } = {}) {
     }
   }
   return out;
+}
+
+/** When the given deposits were read, and when `handle` last checked its mail (relays from 2.0.4 on). */
+export async function fetchReceipts(relay, ids, handle) {
+  const q = new URLSearchParams({ ids: ids.join(","), ...(handle ? { handle } : {}) });
+  try {
+    const res = await fetch(relayUrl(relay, `/v1/receipts?${q}`), { signal: AbortSignal.timeout(10000) });
+    return res.ok ? await res.json() : null;
+  } catch { return null; }
 }
