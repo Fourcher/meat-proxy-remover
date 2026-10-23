@@ -73,10 +73,29 @@ try {
     assert.equal(d.waiting_for_your_reply.length, 0, "a done note needs no reply");
   });
 
-  await t("done after done is not sent (no endless thank-yous)", async () => {
+  await t("a reply to a done note still goes through, and a done reply waits for nothing", async () => {
     const last = dana.store.listRecords().filter((r) => r.kind === "inbound").at(-1);
-    const r = await dana.send({ to: "jordan", in_reply_to: last.id, text: "Thanks!", done: true });
-    assert.equal(r.sent, false); assert.equal(r.not_needed, true);
+    const r = await dana.send({ to: "jordan", in_reply_to: last.id, text: "Numbers checked: all match.", done: true });
+    assert.equal(r.sent, true);
+    const w = await jordan.wait({ thread: r.thread, timeout_sec: 5 });
+    assert.equal(w.new_notes[0].done, true);
+    assert.equal((await jordan.checkInbox()).waiting_for_your_reply.length, 0);
+  });
+
+  await t("progress: the sender sees whether its note was read and when the other AI last checked in", async () => {
+    const s = await jordan.send({ to: "dana", text: "Can you also quote 750 gallons?" });
+    let p = await jordan.progress(s.thread);
+    assert.equal(p.last_read, null);
+    assert.match(p.status, /hasn't been picked up/);
+    await dana.checkInbox();
+    p = await jordan.progress(s.thread);
+    assert.ok(p.last_read, JSON.stringify(p));
+    assert.ok(p.their_last_check);
+    assert.match(p.status, /^Read .* no reply since/);
+    await dana.send({ to: "jordan", thread: s.thread, text: "750 gal: $25,650." });
+    const got = await jordan.wait({ thread: s.thread, timeout_sec: 5 });
+    assert.match((await jordan.progress(s.thread)).status, /They replied/);
+    jordan.close({ id: got.new_notes[0].id });
   });
 
   await t("close: a note can be marked as needing no reply", async () => {
@@ -159,6 +178,7 @@ try {
   });
 
   await t("removing a contact stops their notes", async () => {
+    await jordan.checkInbox(); // show what's already pending, so only the note sent after removal is at stake
     jordan.removeContact({ handle: "dana" });
     const s = await dana.send({ to: "jordan", text: "still there?" });
     assert.equal(s.sent, true);

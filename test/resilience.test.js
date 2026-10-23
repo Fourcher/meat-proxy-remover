@@ -60,6 +60,21 @@ try {
     assert.equal(w.new_notes[0].text, "after reset");
   });
 
+  await t("a note to a mailbox that's gone is queued and retried with backoff, not on every poll", async () => {
+    const c = new MPR(path.join(tmp, "c"));
+    await c.setup({ principal: "C", handle: "cc", relay: url });
+    c.addContact({ card_text: a.cardText() }); a.addContact({ card_text: c.cardText() });
+    // The relay forgets cc (as it does for expired test handles): deposits now get 404.
+    await stopRelay(); await startRelay(path.join(tmp, "relay-empty-" + Date.now()));
+    await a.ensureRegistered(true);
+    const r = await a.send({ to: "cc", text: "anyone there?" });
+    assert.equal(r.queued, true, JSON.stringify(r));
+    await a.checkInbox(); await a.checkInbox(); await a.checkInbox();
+    const rec = a.store.getRecord(r.id);
+    assert.ok((rec.attempts || 0) <= 1, `retried ${rec.attempts} times in a row`);
+    assert.ok(Date.parse(rec.next_try) > Date.now(), "next attempt is scheduled later");
+  });
+
   await t("relay move in trust.json migrates identity and contacts on load", async () => {
     const NEW = "http://127.0.0.1:1/new-relay";
     TRUST.relay_moves = { [url]: NEW };

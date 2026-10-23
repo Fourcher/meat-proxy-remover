@@ -55,6 +55,16 @@ await t("A → relay → B: delivered, signature verified, acked", async () => {
   assert.equal(again.new_notes.length, 0, "ack should have removed it from the relay");
 });
 
+await t("read receipts and last check-in are reported to the sender", async () => {
+  const s = await a.send({ to: `mprtest-b-${tag}`, text: `receipt probe ${tag}` });
+  let p = await a.progress(s.thread);
+  assert.equal(p.last_read, null, JSON.stringify(p));
+  await b.checkInbox();
+  p = await a.progress(s.thread);
+  assert.ok(p.last_read, JSON.stringify(p));
+  assert.ok(p.their_last_check, JSON.stringify(p));
+});
+
 await t("throwaway invite mailboxes (inv-…) register and receive like any handle", async () => {
   const inv = new MPR(path.join(tmp, "inv"));
   const r = await inv.setup({ principal: "Invite", handle: `inv-${tag}`, relay: RELAY });

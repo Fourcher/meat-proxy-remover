@@ -12,10 +12,13 @@ fs.rmSync(tmp, { recursive: true, force: true });
 fs.mkdirSync(path.join(tmp, "bin"), { recursive: true });
 process.env.MPR_NO_NOTIFY = "1"; process.env.MPR_NO_AUTOUPDATE = "1";
 process.env.MPR_ROOT = path.join(tmp, "root");
-const fake = (code, text) => fs.writeFileSync(path.join(tmp, "bin", "claude"), `#!/bin/sh\ncat >/dev/null\necho "${text}"\nexit ${code}\n`, { mode: 0o755 });
-process.env.PATH = path.join(tmp, "bin") + ":" + process.env.PATH;
+// A stand-in for the claude command (a .cmd on Windows, a shell script elsewhere).
+const fake = (code, text) => process.platform === "win32"
+  ? fs.writeFileSync(path.join(tmp, "bin", "claude.cmd"), `@echo off\r\nmore >nul\r\necho ${text}\r\nexit /b ${code}\r\n`)
+  : fs.writeFileSync(path.join(tmp, "bin", "claude"), `#!/bin/sh\ncat >/dev/null\necho "${text}"\nexit ${code}\n`, { mode: 0o755 });
+process.env.PATH = path.join(tmp, "bin") + path.delimiter + process.env.PATH;
 const { MPR } = await import("../src/core/service.js");
-const { autopilot } = await import("../src/autopilot.js");
+const { autopilot, parseRun } = await import("../src/autopilot.js");
 
 let passed = 0;
 async function t(name, fn) {
@@ -59,6 +62,38 @@ try {
     const after = b.store.getState();
     assert.equal(after.autopilot_error, null);
     assert.equal(handled(), 1);
+  });
+
+  await t("claude's JSON answer gives the text, its exit status and the session id; plain text still works", async () => {
+    const j = parseRun(0, JSON.stringify({ result: "hi", session_id: "s", is_error: false }), "");
+    assert.deepEqual([j.code, j.stdout, j.session_id], [0, "hi", "s"]);
+    assert.equal(parseRun(0, JSON.stringify({ result: "x", is_error: true }), "").code, 1);
+    assert.equal(parseRun(0, "plain", "").session_id, null);
+  });
+
+  await t("the helper resumes one Claude session per conversation, from the session id Claude returned", async () => {
+    if (process.platform === "win32") return; // the stand-in is a shell script
+    const argsLog = path.join(tmp, "claude-args.log");
+    fs.writeFileSync(path.join(tmp, "bin", "claude"), `#!/bin/sh\ncat >/dev/null\necho "$@" >> "${argsLog}"\necho '{"type":"result","is_error":false,"result":"answered","session_id":"sess-1"}'\n`, { mode: 0o755 });
+    const first = await a.send({ to: "bb", text: "Second question: lunch?" });
+    await autopilot({ home: path.join(tmp, "b"), once: true, log: quiet });
+    assert.equal(b.store.getState().autopilot_sessions[first.thread].session_id, "sess-1");
+    await a.send({ to: "bb", thread: first.thread, text: "And dinner?" });
+    await autopilot({ home: path.join(tmp, "b"), once: true, log: quiet });
+    const calls = fs.readFileSync(argsLog, "utf8").trim().split("\n");
+    assert.equal(calls.length, 2);
+    assert.ok(!calls[0].includes("--resume"), "the first wake-up starts a session");
+    assert.ok(calls[1].includes("--resume sess-1"), "the second wake-up resumes it");
+  });
+
+  await t("a note the helper collected still shows up in the person's next session, exactly once", async () => {
+    await a.send({ to: "bb", text: "FYI: the report is in the shared folder.", done: true });
+    const helper = await b.checkInbox({ helper: true });
+    assert.ok(helper.new_notes.some((n) => /shared folder/.test(n.text)), "the helper fetches it");
+    const session = await b.checkInbox();
+    assert.ok(session.new_notes.some((n) => /shared folder/.test(n.text)), "the person's next session still gets it");
+    const again = await b.checkInbox();
+    assert.ok(!again.new_notes.some((n) => /shared folder/.test(n.text)), "and it isn't shown a second time");
   });
 } finally {
   relay.kill();
