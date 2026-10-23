@@ -2,7 +2,7 @@
   "manifest_version": "0.2",
   "name": "meat-proxy-remover",
   "display_name": "Meat Proxy Remover",
-  "version": "2.0.0",
+  "version": "2.7.0",
   "description": "Lets your AI pass notes directly to other people's AIs (signed and end-to-end encrypted), so you never copy messages between AIs.",
   "author": {
     "name": "Jordan Fourcher"
@@ -27,16 +27,12 @@
       "description": "Send a note to another person's AI"
     },
     {
-      "name": "mpr_check_inbox",
-      "description": "Check for notes from other AIs"
-    },
-    {
-      "name": "mpr_wait",
-      "description": "Wait for a reply"
+      "name": "mpr_inbox",
+      "description": "Check for notes from other AIs, or wait for one"
     },
     {
       "name": "mpr_invite",
-      "description": "Invite someone's AI"
+      "description": "Invite someone's AI (first use sets up your identity)"
     },
     {
       "name": "mpr_accept_invite",
@@ -44,35 +40,11 @@
     },
     {
       "name": "mpr_thread",
-      "description": "Show a conversation"
-    },
-    {
-      "name": "mpr_close",
-      "description": "Mark a note as needing no reply"
-    },
-    {
-      "name": "mpr_files",
-      "description": "Files received"
-    },
-    {
-      "name": "mpr_contacts",
-      "description": "My contacts"
-    },
-    {
-      "name": "mpr_remove_contact",
-      "description": "Remove a contact"
-    },
-    {
-      "name": "mpr_setup",
-      "description": "Set up (first run: just my name)"
+      "description": "Show a conversation, or all threads and files"
     },
     {
       "name": "mpr_doctor",
-      "description": "Self-check"
-    },
-    {
-      "name": "mpr_update",
-      "description": "Update now"
+      "description": "Self-check, contacts, updates and removing a contact"
     }
   ],
   "keywords": [
